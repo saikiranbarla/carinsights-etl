@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+env/
+venv/
+provisioning/
+# AWS
+.aws/
+# IDEs
+.vscode/
+.idea/
+# Data
+*.csv
+*.parquet
+secrets.json
