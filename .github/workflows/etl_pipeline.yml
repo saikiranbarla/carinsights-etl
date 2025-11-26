@@ -3,10 +3,10 @@ name: ETL Pipeline - Generate, Upload & Deploy
 # Triggers
 on:
   push:
-    branches: [ main ]      # Trigger on push to main branch
-  workflow_dispatch:         # Manual trigger
-  schedule:                  # CRON schedule: daily at 1 AM UTC
-    - cron: '0 1 * * *'
+    branches: [ main ]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 1 * * *'   # Daily at 1 AM UTC
 
 jobs:
   generate-and-upload:
@@ -24,26 +24,36 @@ jobs:
       with:
         python-version: '3.10'
 
-    # Step 3: Install Python dependencies
-    - name: 1.3 Install Python dependencies
+    # Step 3: Install dependencies
+    - name: 1.3 Install dependencies
       run: |
+        sudo apt-get update
+        sudo apt-get install -y libpq-dev gcc postgresql-client
         python -m pip install --upgrade pip
         pip install faker pandas boto3 awscli psycopg2-binary
 
-    # Step 4: Run data generator script
-    - name: 1.4 Generate 90-days sales CSVs
+    # Step 4: Debug environment
+    - name: 1.4 Debug environment
+      run: |
+        python --version
+        aws --version
+        psql --version
+        ls -R
+
+    # Step 5: Run data generator
+    - name: 1.5 Generate 90-days sales CSVs
       run: |
         python data_generator/generate_3months_data.py
 
-    # Step 5: List generated files for verification
-    - name: 1.5 List generated CSV files
+    # Step 6: Verify generated files
+    - name: 1.6 List generated CSV files
       run: |
-        echo "Listing generated CSV files:"
+        echo "Listing CSV files:"
         find sample_data -type f -name "*.csv" -print || true
         echo "Total files:"
         find sample_data -type f -name "*.csv" | wc -l || true
 
-    # Step 6: Configure AWS CLI
+    # Step 7: Configure AWS CLI
     - name: 2.1 Configure AWS CLI
       uses: aws-actions/configure-aws-credentials@v2
       with:
@@ -51,7 +61,7 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         aws-region: ${{ secrets.AWS_REGION }}
 
-    # Step 7: Upload CSV files to S3
+    # Step 8: Upload CSVs to S3
     - name: 2.2 Upload CSVs to S3
       run: |
         for file in sample_data/*.csv; do
@@ -59,12 +69,11 @@ jobs:
           aws s3 cp "$file" s3://${{ secrets.S3_BUCKET_NAME }}/
         done
 
-    # Step 8: Verify S3 upload
+    # Step 9: Verify S3 upload
     - name: 2.3 Verify S3 upload
-      run: |
-        aws s3 ls s3://${{ secrets.S3_BUCKET_NAME }}/
+      run: aws s3 ls s3://${{ secrets.S3_BUCKET_NAME }}/
 
-    # Step 9: Deploy Lambda function (optional)
+    # Step 10: Deploy Lambda (optional)
     - name: 3.1 Package and deploy Lambda
       if: ${{ secrets.LAMBDA_FUNCTION_NAME != '' }}
       run: |
@@ -73,7 +82,7 @@ jobs:
           --function-name ${{ secrets.LAMBDA_FUNCTION_NAME }} \
           --zip-file fileb://lambda_function.zip
 
-    # Step 10: Optional: Load CSV to RDS PostgreSQL
+    # Step 11: Load CSVs to RDS (optional)
     - name: 4.1 Load CSV to RDS
       if: ${{ secrets.RDS_HOST != '' }}
       run: |
@@ -86,8 +95,8 @@ jobs:
             -c "\copy sales_table FROM '$file' DELIMITER ',' CSV HEADER;"
         done
 
-    # Step 11: Verify RDS data (optional)
-    - name: 4.2 Verify RDS load
+    # Step 12: Verify RDS load (optional)
+    - name: 4.2 Verify RDS data
       if: ${{ secrets.RDS_HOST != '' }}
       run: |
         PGPASSWORD=${{ secrets.RDS_PASSWORD }} psql \
